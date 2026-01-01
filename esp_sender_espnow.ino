@@ -18,6 +18,11 @@ typedef struct __attribute__((packed)) {
   uint16_t rpm;      // real RPM
   uint8_t  fuel;     // 0–100 %
   uint8_t  oilTemp;  // °C + 40 offset
+  uint8_t  speed;  
+  uint8_t  gear;      // 1=1st, 2=N, 4=2nd, 7=3rd, 8=4th, B=5th, D=6th, F=In between Gears  HIGH NIBBLE
+  uint8_t  infoButton; // 4=Off, 5=Short Press, 6=Long Press(>2secs)  
+  uint16_t  blinkers; // CF=Off, D7=Left On, E7=Right On, EF=Both On
+  int odometer; // (d3,d2,d1)
 } bike_data_t;
 
 bike_data_t data;
@@ -31,6 +36,29 @@ uint8_t receiverMac[] = {0x1C, 0xDB, 0xD4, 0x37, 0xBA, 0x6C}; // CHANGE
 // -------- ESP-NOW CALLBACK --------
 void onSent(const wifi_tx_info_t *info, esp_now_send_status_t status)  {
   Serial.println(status == ESP_NOW_SEND_SUCCESS ? "OK" : "FAIL");
+}
+
+const int getGearLabel(uint8_t value) {
+  switch (value) {
+    case 0x01: return 1;
+    case 0x02: return 0;
+    case 0x04: return 2;
+    case 0x07: return 3;
+    case 0x08: return 4;
+    case 0x0B: return 5;
+    case 0x0D: return 6;
+    case 0x0F: return 8;
+    default: return 9;
+  }
+}
+const int getBlinkersStatus(int value) {
+  switch (value) {
+    case 0xCF: return 0;
+    case 0xD7: return 1;
+    case 0xE7: return 2;
+    case 0xEF: return 3;
+    default: return 9;
+  }
 }
 
 void setup() {
@@ -59,12 +87,6 @@ void setup() {
     Serial.println("Peer add successful");
   }
 
-  // Broadcast peer
-  // esp_now_peer_info_t peer = {};
-  // memset(peer.peer_addr, 0xFF, 6);
-  // peer.channel = 0;
-  // peer.encrypt = false;
-  // esp_now_add_peer(&peer);
 
   // -------- SPI / CAN --------
   SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI, CAN_CS);
@@ -92,26 +114,45 @@ void loop() {
     CAN.readMsgBuf(&rxId, &len, buf);
 
     if (rxId == 0x10C) {
-      data.rpm = (buf[3] * 256 + buf[2]) / 4;
+      data.rpm = (buf[3] * 256 + buf[2]) / 4;                           // rpm             tested
     }
     else if (rxId == 0x2D0) {
-      data.fuel = map(buf[3], 0, 255, 0, 100);
+      data.fuel = map(buf[3], 0, 255, 0, 100);                          // fuel            tested
+      data.infoButton = (uint8_t) buf[5];                               // info            tested
+    }
+    else if (rxId == 0x130) {
+      data.blinkers = (uint8_t)  getBlinkersStatus(buf[7]);               // blinkers        tested
     }
     else if (rxId == 0x2BC) {
       int temp = buf[2] * 0.75 - 24;
       temp = constrain(temp, -40, 215);
-      data.oilTemp = temp + 40;
+      data.oilTemp = temp + 40;                                          // oil             tested
+      uint8_t shifted = (uint8_t) (buf[7] >> 4) & 0x0F;
+      data.gear = (uint8_t) getGearLabel(shifted);;                      // gear            tested
+    }
+    else if (rxId == 0x3F8) {
+      data.odometer = (int) (buf[3] << 16) + (buf[2] << 8) + buf[1];     // odo             tested
     }
   }
 
   // -------- SIMULATION MODE --------
   if (simulate) {
     float t = millis();
-    data.rpm = 2500 + 2500 * sin(t / 1000.0);
+    data.rpm = 4000 + 4000 * sin(t / 1000.0);
     float f = 50.0 + 50.0 * sin(t / 5000.0);
     data.fuel = (uint8_t) constrain(f, 0, 100);
     int temp = 80 + 10 * sin(t / 3000.0);
     data.oilTemp = temp + 40;
+    data.gear = random(7);
+    data.speed = (uint8_t) 199;
+    data.odometer = (int)  (0xFA << 16) + (0xAB << 8) + 0x15;
+    data.infoButton = (uint8_t) random(4,7);
+    char blinker[4];
+    blinker[0] = 0xCF;
+    blinker[1] = 0xD7;
+    blinker[2] = 0xE7;
+    blinker[3] = 0xEF;
+    data.blinkers = (uint8_t)  getBlinkersStatus(blinker[random(4)]);               // blinkers
   }
 
   // -------- ESP-NOW SEND --------
