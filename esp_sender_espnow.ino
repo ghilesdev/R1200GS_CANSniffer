@@ -5,9 +5,9 @@
 #include <math.h>
 
 // TODO 
-// debug temp : shows 52 cold wtf!!!
+// debug temp : shows 52 cold wtf!!! maybe offset??
 // no blinkers
-// no gears
+// no gears >>> done
 
 
 // -------- PIN DEFINITIONS --------
@@ -57,7 +57,7 @@ const int getGearLabel(uint8_t value) {
     default: return 9;
   }
 }
-const int getBlinkersStatus(int value) {
+const int getBlinkersStatus(unsigned char value) {
   switch (value) {
     case 0xCF: return 0;
     case 0xD7: return 1;
@@ -124,17 +124,30 @@ void loop() {
     }
     else if (rxId == 0x2D0) {
       data.fuel = map(buf[3], 0, 255, 0, 100);                          // fuel            tested
+      Serial.print("info button raw value: ");
+      Serial.println(buf[5]);
       data.infoButton = (uint8_t) buf[5] & 0x0F;                        // info            tested
     }
     else if (rxId == 0x130) {
-      data.blinkers = (uint8_t)  getBlinkersStatus(buf[7]);               // blinkers        tested
+      unsigned char blinks = buf[7];
+      Serial.print("Blinks raw value: ");
+      Serial.println(blinks);
+      Serial.print("Blinks transformed value: ");
+      Serial.println((uint8_t)  getBlinkersStatus(blinks));
+      data.blinkers = (uint8_t)  getBlinkersStatus(blinks);             // blinkers        tested
     }
     else if (rxId == 0x2BC) {
       int temp = buf[2] * 0.75 - 24;
       temp = constrain(temp, -40, 215);
-      data.oilTemp = temp + 40;                                          // oil             tested
-      uint8_t shifted = (uint8_t) (buf[7] >> 4) & 0x0F;
-      data.gear = (uint8_t) getGearLabel(shifted);;                      // gear            tested
+      data.oilTemp = temp;                                          // oil             tested
+      uint8_t shifted = (uint8_t) (buf[5] >> 4) & 0x0F;
+      data.gear = (uint8_t) getGearLabel(shifted);                      // gear            tested
+      Serial.print("gears raw value: ");
+      Serial.println(buf[5]);
+      Serial.print("Gears shifted value: ");
+      Serial.println(shifted);
+      Serial.print("Gears final value: ");
+      Serial.println((uint8_t) getGearLabel(shifted));
     }
     else if (rxId == 0x3F8) {
       data.odometer = (int) (buf[3] << 16) + (buf[2] << 8) + buf[1];     // odo             tested
@@ -155,7 +168,7 @@ void loop() {
     
     char info =  random(0xB4,0xB7);
     data.infoButton = (uint8_t) info & 0x0F;
-    char blinker[4];
+    unsigned char  blinker[4];
     blinker[0] = 0xCF;
     blinker[1] = 0xD7;
     blinker[2] = 0xE7;
