@@ -4,6 +4,12 @@
 #include <SPI.h>
 #include <math.h>
 
+// TODO 
+// debug temp : shows 52 cold wtf!!!
+// no blinkers
+// no gears
+
+
 // -------- PIN DEFINITIONS --------
 #define CAN_CS   27
 #define CAN_INT  26
@@ -103,7 +109,7 @@ void setup() {
   }
 
   // force sim if needed
-  simulate = true;
+  // simulate = true;
 }
 
 void loop() {
@@ -118,7 +124,7 @@ void loop() {
     }
     else if (rxId == 0x2D0) {
       data.fuel = map(buf[3], 0, 255, 0, 100);                          // fuel            tested
-      data.infoButton = (uint8_t) buf[5];                               // info            tested
+      data.infoButton = (uint8_t) buf[5] & 0x0F;                        // info            tested
     }
     else if (rxId == 0x130) {
       data.blinkers = (uint8_t)  getBlinkersStatus(buf[7]);               // blinkers        tested
@@ -146,7 +152,9 @@ void loop() {
     data.gear = random(7);
     data.speed = (uint8_t) 199;
     data.odometer = (int)  (0xFA << 16) + (0xAB << 8) + 0x15;
-    data.infoButton = (uint8_t) random(4,7);
+    
+    char info =  random(0xB4,0xB7);
+    data.infoButton = (uint8_t) info & 0x0F;
     char blinker[4];
     blinker[0] = 0xCF;
     blinker[1] = 0xD7;
